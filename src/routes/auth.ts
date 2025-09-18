@@ -67,25 +67,38 @@ const db = new Database();
 router.post('/register', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
+    
+    console.log('Registration attempt:', { email, passwordLength: password?.length });
 
     // Validation
     if (!email || !password) {
+      console.log('Missing email or password');
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
+    console.log(email, password);
+    
+
     if (password.length < 6) {
+      console.log('Password too short');
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     // Check if user already exists
-    const existingUser = await db.findUserByEmail(email);
-    if (existingUser) {
+    const existingUser = await db.findUserByEmail("xxx");
+    console.log("Existing", existingUser);
+    
+    console.log('Existing user found:', !!existingUser);
+
+    if (existingUser && existingUser.id != undefined && existingUser.id != 'undefined') {
+      console.log('User already exists with email:', email);
       return res.status(400).json({ error: 'User already exists with this email' });
     }
 
     // Hash password and create user
     const hashedPassword = await AuthService.hashPassword(password);
     const user = await db.createUser(email, hashedPassword);
+    console.log('User created successfully:', user.id);
 
     // Generate JWT token
     const token = AuthService.generateToken(user.id, user.email);
