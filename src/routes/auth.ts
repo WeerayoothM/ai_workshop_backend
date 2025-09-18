@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { Database } from '../database';
-import { AuthService } from '../auth';
+import { AuthService } from '../utils/jwt';
 
 const router = express.Router();
 const db = new Database();
