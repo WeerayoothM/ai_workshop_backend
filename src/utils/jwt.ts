@@ -8,6 +8,7 @@ const SALT_ROUNDS = 10;
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
+    userId: string;
     email: string;
   };
 }
@@ -44,7 +45,11 @@ export const authenticateToken = (req: AuthenticatedRequest, res: Response, next
 
   try {
     const decoded = AuthService.verifyToken(token);
-    req.user = decoded;
+    req.user = {
+      id: decoded.userId,
+      userId: decoded.userId,
+      email: decoded.email
+    };
     next();
   } catch (error) {
     return res.status(403).json({ error: 'Invalid or expired token' });
