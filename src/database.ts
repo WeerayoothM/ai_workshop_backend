@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import initSqlJs, { Database as SqlDatabase } from 'sql.js';
 
 export interface User {
   id: string;
@@ -10,49 +11,132 @@ export interface User {
 
 export class Database {
   private dbPath: string;
-  private users: User[] = [];
+  private db: SqlDatabase | null = null;
+  private SQL: any;
 
   constructor() {
-    this.dbPath = path.join(__dirname, '../data/users.json');
+    this.dbPath = path.join(__dirname, '../data/database.sqlite');
     this.initDatabase();
   }
 
-  private initDatabase(): void {
-    const dataDir = path.dirname(this.dbPath);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
+  private async initDatabase(): Promise<void> {
+    try {
+      // Initialize sql.js
+      this.SQL = await initSqlJs();
+      
+      const dataDir = path.dirname(this.dbPath);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
 
-    if (fs.existsSync(this.dbPath)) {
-      const data = fs.readFileSync(this.dbPath, 'utf-8');
-      this.users = JSON.parse(data);
-    } else {
-      this.saveUsers();
+      // Load existing database or create new one
+      if (fs.existsSync(this.dbPath)) {
+        const fileBuffer = fs.readFileSync(this.dbPath);
+        this.db = new this.SQL.Database(fileBuffer);
+      } else {
+        this.db = new this.SQL.Database();
+        this.createTables();
+        this.saveDatabase();
+      }
+    } catch (error) {
+      console.error('Database initialization error:', error);
+      // Fallback to in-memory database
+      this.SQL = await initSqlJs();
+      this.db = new this.SQL.Database();
+      this.createTables();
     }
   }
 
-  private saveUsers(): void {
-    fs.writeFileSync(this.dbPath, JSON.stringify(this.users, null, 2));
+  private createTables(): void {
+    if (!this.db) return;
+    
+    const createUsersTable = `
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    
+    this.db.run(createUsersTable);
   }
 
-  public createUser(email: string, hashedPassword: string): User {
-    const user: User = {
-      id: Date.now().toString(),
+  private saveDatabase(): void {
+    if (!this.db) return;
+    
+    try {
+      const data = this.db.export();
+      fs.writeFileSync(this.dbPath, data);
+    } catch (error) {
+      console.error('Failed to save database:', error);
+    }
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.db) {
+      await this.initDatabase();
+    }
+  }
+
+  public async createUser(email: string, hashedPassword: string): Promise<User> {
+    await this.ensureInitialized();
+    if (!this.db) throw new Error('Database not initialized');
+
+    const userId = Date.now().toString();
+    const createdAt = new Date().toISOString();
+    
+    const stmt = this.db.prepare(`
+      INSERT INTO users (id, email, password, created_at) 
+      VALUES (?, ?, ?, ?)
+    `);
+    
+    stmt.run([userId, email, hashedPassword, createdAt]);
+    stmt.free();
+    
+    this.saveDatabase();
+    
+    return {
+      id: userId,
       email,
       password: hashedPassword,
-      createdAt: new Date()
+      createdAt: new Date(createdAt)
     };
-
-    this.users.push(user);
-    this.saveUsers();
-    return user;
   }
 
-  public findUserByEmail(email: string): User | undefined {
-    return this.users.find(user => user.email === email);
+  public async findUserByEmail(email: string): Promise<User | undefined> {
+    await this.ensureInitialized();
+    if (!this.db) return undefined;
+
+    const stmt = this.db.prepare('SELECT * FROM users WHERE email = ?');
+    const result = stmt.get([email]);
+    stmt.free();
+
+    if (!result) return undefined;
+
+    return {
+      id: String(result[0]),
+      email: String(result[1]),
+      password: String(result[2]),
+      createdAt: new Date(String(result[3]))
+    };
   }
 
-  public findUserById(id: string): User | undefined {
-    return this.users.find(user => user.id === id);
+  public async findUserById(id: string): Promise<User | undefined> {
+    await this.ensureInitialized();
+    if (!this.db) return undefined;
+
+    const stmt = this.db.prepare('SELECT * FROM users WHERE id = ?');
+    const result = stmt.get([id]);
+    stmt.free();
+
+    if (!result) return undefined;
+
+    return {
+      id: String(result[0]),
+      email: String(result[1]), 
+      password: String(result[2]),
+      createdAt: new Date(String(result[3]))
+    };
   }
 }

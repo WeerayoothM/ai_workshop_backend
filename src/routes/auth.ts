@@ -78,14 +78,14 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     // Check if user already exists
-    const existingUser = db.findUserByEmail(email);
+    const existingUser = await db.findUserByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists with this email' });
     }
 
     // Hash password and create user
     const hashedPassword = await AuthService.hashPassword(password);
-    const user = db.createUser(email, hashedPassword);
+    const user = await db.createUser(email, hashedPassword);
 
     // Generate JWT token
     const token = AuthService.generateToken(user.id, user.email);
@@ -138,7 +138,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Find user
-    const user = db.findUserByEmail(email);
+    const user = await db.findUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
